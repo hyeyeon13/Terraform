@@ -1,56 +1,56 @@
-name: 'Terraform'
+name: Terraform
 
 on:
+  workflow_dispatch:
   push:
     branches:
-    - "main"
-  pull_request:
+      - main
 
-# env:
-#   AWS_REGION: ap-northeast-2   # set this to your preferred AWS region, e.g. us-west-1
-
-permissions:
-  contents: read/write
+env:
+  AWS_ACCESS_KEY_ID: ${{ secrets.ACCESS_KEY }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.SECRET_KEY }}
 
 jobs:
   terraform:
-    name: 'Terraform'
+    name: Plan / Apply
     runs-on: ubuntu-latest
-    environment: production
-
-    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
     defaults:
       run:
-        shell: bash
-
+        working-directory: Terraform
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-    # Checkout the repository to the GitHub Actions runner
     - name: Checkout
       uses: actions/checkout@v3
 
-    # AWS 리소스를 이용하기 위해서 추가
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v1
+    - name: Use Terraform 1.5.5
+      uses: hashicorp/setup-terraform@v2
       with:
-        aws-access-key-id: ${{ secrets.ACCESS_KEY }}
-        aws-secret-access-key: ${{ secrets.SECRET_KEY }}
-        aws-region: ap-northeast-2
-
-    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
-    - name: Terraform Init
-      run: terraform init
-
-    # Checks that all Terraform configuration files adhere to a canonical format
+        terraform_version: 1.5.5
     - name: Terraform Format
-      run: terraform fmt -check
+      id: fmt
+      run: terraform fmt -diff
+      continue-on-error: true
 
-    # Generates an execution plan for Terraform
+    - name: Terraform Init
+      id: init
+      run: terraform init 
+
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate -no-color
+      continue-on-error: true
+
     - name: Terraform Plan
-      run: terraform plan -input=false
+      id: plan
+      run: terraform plan -no-color -input=false
+      continue-on-error: true
 
-      # On push to "main", build or change infrastructure according to Terraform configuration files
-      # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
-    - name: Terraform Apply
-      if: github.ref == 'refs/heads/"main"' && github.event_name == 'push'
-      # if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    - name: Terraform Status
+      if: steps.plan.outcome == 'failure' || steps.validate.outcome == 'failure' || steps.init.outcome == 'failure' || steps.fmt.outcome == 'failure'
+      run: exit 1
+
+    - name: Terraform apply
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       run: terraform apply -auto-approve -input=false
