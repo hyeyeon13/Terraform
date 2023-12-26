@@ -12,7 +12,7 @@ env:
 
 jobs:
   terraform:
-    name: Plan / Apply
+    name: Plan/Apply
     runs-on: ubuntu-latest
     
     steps:
